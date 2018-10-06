@@ -21,9 +21,9 @@ namespace layfs
             public bool HasMessage;
         }
 
-        private const String PROGNAME = "passthrough-dotnet";
+        private const String PROGNAME = "layfs";
 
-        public LayeredFileSystemService() : base("PtfsService")
+        public LayeredFileSystemService() : base("LayeredFileSystemService")
         {
         }
 
@@ -34,7 +34,8 @@ namespace layfs
                 String debugLogFile = null;
                 UInt32 debugFlags = 0;
                 String volumePrefix = null;
-                String passThrough = null;
+                String writePath = null;
+                String readOnlyPath = null;
                 String mountPoint = null;
                 IntPtr debugLogHandle = (IntPtr)(-1);
                 FileSystemHost host = null;
@@ -59,8 +60,11 @@ namespace layfs
                         case 'm':
                             argtos(Args, ref i, ref mountPoint);
                             break;
-                        case 'p':
-                            argtos(Args, ref i, ref passThrough);
+                        case 'r':
+                            argtos(Args, ref i, ref readOnlyPath);
+                            break;
+                        case 'w':
+                            argtos(Args, ref i, ref writePath);
                             break;
                         case 'u':
                             argtos(Args, ref i, ref volumePrefix);
@@ -73,45 +77,30 @@ namespace layfs
                 if (Args.Length > i)
                     throw new CommandLineUsageException();
 
-                if (null == passThrough && null != volumePrefix)
-                {
-                    i = volumePrefix.IndexOf('\\');
-                    if (-1 != i && volumePrefix.Length > i && '\\' != volumePrefix[i + 1])
-                    {
-                        i = volumePrefix.IndexOf('\\', i + 1);
-                        if (-1 != i &&
-                            volumePrefix.Length > i + 1 &&
-                            (
-                            ('A' <= volumePrefix[i + 1] && volumePrefix[i + 1] <= 'Z') ||
-                            ('a' <= volumePrefix[i + 1] && volumePrefix[i + 1] <= 'z')
-                            ) &&
-                            '$' == volumePrefix[i + 2])
-                        {
-                            passThrough = String.Format("{0}:{1}", volumePrefix[i + 1], volumePrefix.Substring(i + 3));
-                        }
-                    }
-                }
-
-                if (null == passThrough || null == mountPoint)
+                if (null == readOnlyPath || null == writePath || null == mountPoint)
                     throw new CommandLineUsageException();
 
                 if (null != debugLogFile)
                     if (0 > FileSystemHost.SetDebugLogFile(debugLogFile))
                         throw new CommandLineUsageException("cannot open debug log file");
 
-                host = new FileSystemHost(new LayeredFileSystem(@"d:\layfs\write", @"d:\layfs\read"));
+                host = new FileSystemHost(new LayeredFileSystem(writePath, readOnlyPath));
                 host.Prefix = volumePrefix;
+
                 if (0 > host.Mount(mountPoint, null, true, debugFlags))
                     throw new IOException("cannot mount file system");
+
                 mountPoint = host.MountPoint();
+
                 _Host = host;
 
-                Log(EVENTLOG_INFORMATION_TYPE, String.Format("{0}{1}{2} -p {3} -m {4}",
+                Log(EVENTLOG_INFORMATION_TYPE, String.Format("{0}{1}{2} -w {3} -r {5} -m {4}",
                     PROGNAME,
                     null != volumePrefix && 0 < volumePrefix.Length ? " -u " : "",
                         null != volumePrefix && 0 < volumePrefix.Length ? volumePrefix : "",
-                    passThrough,
-                    mountPoint));
+                    writePath,
+                    mountPoint,
+                    readOnlyPath));
             }
             catch (CommandLineUsageException ex)
             {
@@ -123,7 +112,8 @@ namespace layfs
                     "    -d DebugFlags       [-1: enable all debug logs]\n" +
                     "    -D DebugLogFile     [file path; use - for stderr]\n" +
                     "    -u \\Server\\Share    [UNC prefix (single backslash)]\n" +
-                    "    -p Directory        [directory to expose as pass through file system]\n" +
+                    "    -w Directory        [write file system]\n" +
+                    "    -r Directory        [read only file system]\n" +
                     "    -m MountPoint       [X:|*|directory]\n",
                     ex.HasMessage ? ex.Message + "\n" : "",
                     PROGNAME));
